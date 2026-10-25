@@ -86,11 +86,10 @@ index that lists it, and (optionally) list the repo in community catalogs.
 2. **GitHub** – public repo, so the market card can show **Source code** and the
    community catalog can index it.
 
-3. **Index** – [market/index.json](market/index.json) plus
-   [market/icons/](market/icons) are ready and validated with DSH's own
-   `parseMarketIndex`. Publish that folder on any static host (GitHub Pages
-   works): the index URL is then
-   `https://<user>.github.io/<repo>/index.json`.
+3. **Index** – [docs/index.json](docs/index.json) plus
+   [docs/icons/](docs/icons) are ready and validated with DSH's own
+   `parseMarketIndex`. GitHub Pages serves that folder, so the index URL is
+   `https://<user>.github.io/dsh-workspace-default-model/index.json`.
 
    Each release: bump `version`, republish, and add a matching entry under the
    plugin's `versions` in `index.json` (`version`, `publishTimestamp`,

@@ -1,11 +1,12 @@
 {
   "format": 1,
   "title": {
-    "en": "Workspace default models",
-    "zh": "工作区默认模型"
+    "en": "Afshin's DSH plugins",
+    "zh": "Afshin 的 DSH 插件"
   },
   "description": {
-    "en": "A market index for plugins that belong to the same author."
+    "en": "DeepSeek Harness plugins by Afshin.",
+    "zh": "Afshin 的 DeepSeek Harness 插件。"
   },
   "plugins": [
     {
@@ -20,6 +21,10 @@
       },
       "icon": "icons/dsh-workspace-default-model.svg",
       "author": "Afshin",
+      "homepage": "https://github.com/Iamafshiin/dsh-workspace-default-model#readme",
+      "repository": {
+        "url": "https://github.com/Iamafshiin/dsh-workspace-default-model"
+      },
       "keywords": [
         "model",
         "workspace",
@@ -31,7 +36,9 @@
           "version": "0.1.0",
           "publishTimestamp": 1792950292,
           "source": {
-            "type": "npm"
+            "type": "git",
+            "url": "https://github.com/Iamafshiin/dsh-workspace-default-model",
+            "commit": "ca14a95688d688f90f2def054397a8383a7bda50"
           },
           "engines": {
             "dsh": ">=0.2.0-rc.3"
