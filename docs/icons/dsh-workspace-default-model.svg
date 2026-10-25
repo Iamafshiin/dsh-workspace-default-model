@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Workspace default models">
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#4176e6"/>
+  <rect x="13" y="13" width="38" height="38" rx="8" fill="none" stroke="#ffffff" stroke-width="3.2"/>
+  <path d="M32 22v20M22 32h20" stroke="#ffffff" stroke-width="3.2" stroke-linecap="round"/>
+</svg>

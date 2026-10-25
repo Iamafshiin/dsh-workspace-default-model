@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "title": {
+    "en": "Workspace default models",
+    "zh": "工作区默认模型"
+  },
+  "description": {
+    "en": "A market index for plugins that belong to the same author."
+  },
+  "plugins": [
+    {
+      "name": "dsh-workspace-default-model",
+      "title": {
+        "en": "Workspace default models",
+        "zh": "工作区默认模型"
+      },
+      "description": {
+        "en": "Pick a default model for each Workspace in the left sidebar. A new Session started in that Workspace begins on that model; existing Sessions and the global default are untouched.",
+        "zh": "在左侧边栏为每个工作区选择默认模型。在该工作区新建的会话会直接使用它，已有会话和全局默认不受影响。"
+      },
+      "icon": "icons/dsh-workspace-default-model.svg",
+      "author": "Afshin",
+      "keywords": [
+        "model",
+        "workspace",
+        "sidebar",
+        "default"
+      ],
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1792950292,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.0-rc.3"
+          }
+        }
+      ]
+    }
+  ]
+}

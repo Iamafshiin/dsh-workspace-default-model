@@ -1,0 +1,9 @@
+# dsh-workspace-default-model — the Host row this bundle inserts.
+#
+# One row: the Host half that persists the Workspace -> model map, serves the
+# state and catalog routes for the browser half, and puts a Workspace's model
+# on a Session the moment it starts there. It declares no Config.
+- insert:
+    - id: workspace-default-model
+      name: dsh-workspace-default-model
+      config: {}
