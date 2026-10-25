@@ -5,6 +5,21 @@ lives in a new **Workspace models** page in the left sidebar, and it applies to
 every *new* Session started in that Workspace. Sessions that already exist are
 never changed, and the process-wide default model is never overwritten.
 
+## Install
+
+Published on npm as **`dsh-workspace-default-model`**.
+
+```sh
+dsh plugin --profile <name> add dsh-workspace-default-model
+```
+
+Or add the market index in the Web UI (**Plugins → More → Custom plugin
+markets**, then **Discover → Add index source**) and install from the card:
+
+```text
+https://iamafshiin.github.io/dsh-workspace-default-model/index.json
+```
+
 ## What it looks like
 
 - Left sidebar gets a row named **Workspace models**.

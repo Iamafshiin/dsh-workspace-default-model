@@ -34,11 +34,9 @@
       "versions": [
         {
           "version": "0.1.0",
-          "publishTimestamp": 1792950292,
+          "publishTimestamp": 1792965735,
           "source": {
-            "type": "git",
-            "url": "https://github.com/Iamafshiin/dsh-workspace-default-model",
-            "commit": "ca14a95688d688f90f2def054397a8383a7bda50"
+            "type": "npm"
           },
           "engines": {
             "dsh": ">=0.2.0-rc.3"
