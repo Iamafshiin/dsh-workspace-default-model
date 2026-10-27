@@ -49,6 +49,19 @@ window.__ModuleLoader__.load({
 			'.wdm-select:disabled{opacity:.5;cursor:default;border-color:var(--dsw-alias-border-l2)}',
 			'.wdm-picks{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
 			'.wdm-effort{max-width:150px;min-width:112px}',
+			'.wdm-picker{position:relative;display:inline-flex;flex:none}',
+			'.wdm-trigger{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;overflow:hidden}',
+			'.wdm-trigger-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+			'.wdm-chevron{flex:none;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary)}',
+			'.wdm-pop{position:fixed;z-index:1200;display:flex;flex-direction:column;max-height:320px;overflow:hidden;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--dsw-elevation-prominent,0 10px 28px rgba(0,0,0,.38))}',
+			'.wdm-pop-search{padding:8px;border-bottom:1px solid var(--dsw-alias-border-l2)}',
+			'.wdm-input{width:100%;height:28px;box-sizing:border-box;border-radius:var(--dsw-radius-sm,8px);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;padding:0 8px}',
+			'.wdm-input:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}',
+			'.wdm-pop-list{overflow:auto;padding:4px;min-height:0}',
+			'.wdm-pop-group{padding:8px 8px 3px;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary)}',
+			'.wdm-opt{display:block;width:100%;text-align:left;padding:6px 9px;border:0;border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+			'.wdm-opt:hover,.wdm-opt-active{background:color-mix(in srgb,var(--dsw-alias-label-primary) 9%,transparent)}',
+			'.wdm-opt[aria-selected="true"]{font-weight:600}',
 			'.wdm-note{padding:12px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,14px);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:12.5px}',
 			'.wdm-note b{display:block;margin-bottom:3px;color:var(--dsw-alias-label-primary);font-size:12.5px}',
 			'.wdm-status{font-size:12px;color:var(--dsw-alias-label-tertiary)}',
@@ -112,6 +125,183 @@ window.__ModuleLoader__.load({
 			const providerName = group === undefined ? selection.provider : group.name
 			const modelName = model === undefined ? selection.model : model.name
 			return `${providerName} / ${modelName}`
+		}
+
+		/**
+		 * A searchable model picker: a button that opens a popover with a search
+		 * field and the provider-grouped catalog. Rendered with fixed positioning
+		 * so the card's rounded overflow never clips it.
+		 * @param {any} props - groups, label, value, ariaLabel, onPick.
+		 */
+		function ModelPicker(props) {
+			const groups = Array.isArray(props.groups) ? props.groups : []
+			const [open, setOpen] = React.useState(false)
+			const [query, setQuery] = React.useState('')
+			const [active, setActive] = React.useState(0)
+			const [position, setPosition] = React.useState(null)
+			const triggerRef = React.useRef(null)
+			const inputRef = React.useRef(null)
+
+			/** Flattened, filtered options: the global default first, then models. */
+			const flat = React.useMemo(() => {
+				const needle = query.trim().toLowerCase()
+				const out = [{ kind: 'global', label: 'Global default' }]
+				for (const group of groups) {
+					const groupMatches = needle !== '' && String(group.name ?? '').toLowerCase().includes(needle)
+					for (const model of group.models) {
+						const name = String(model.name ?? model.id)
+						const hit =
+							needle === '' ||
+							groupMatches ||
+							name.toLowerCase().includes(needle) ||
+							String(model.id).toLowerCase().includes(needle)
+						if (hit) out.push({ kind: 'model', provider: group.id, providerName: group.name, model: model.id, label: name })
+					}
+				}
+				return out
+			}, [groups, query])
+
+			const close = React.useCallback(() => {
+				setOpen(false)
+				setQuery('')
+				setActive(0)
+			}, [])
+
+			const openPanel = () => {
+				const rect = triggerRef.current === null ? null : triggerRef.current.getBoundingClientRect()
+				if (rect !== null) {
+					const width = Math.max(rect.width, 280)
+					const left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 12))
+					const below = rect.bottom + 6
+					const flip = below + 320 > window.innerHeight && rect.top > 340
+					setPosition({ left, top: flip ? Math.max(8, rect.top - 6 - 320) : below, width })
+				}
+				setOpen((wasOpen) => !wasOpen)
+			}
+
+			React.useEffect(() => {
+				if (!open) return undefined
+				const onPointerDown = (event) => {
+					const node = event.target
+					if (triggerRef.current !== null && triggerRef.current.contains(node)) return
+					if (node instanceof Element && node.closest('.wdm-pop') !== null) return
+					close()
+				}
+				const onKeyDown = (event) => {
+					if (event.key === 'Escape') close()
+				}
+				const onScroll = () => close()
+				document.addEventListener('mousedown', onPointerDown)
+				document.addEventListener('keydown', onKeyDown)
+				window.addEventListener('resize', onScroll)
+				window.addEventListener('scroll', onScroll, true)
+				const focusInput = () => {
+					if (inputRef.current !== null) inputRef.current.focus()
+				}
+				const frame = typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame(focusInput) : window.setTimeout(focusInput, 16)
+				return () => {
+					document.removeEventListener('mousedown', onPointerDown)
+					document.removeEventListener('keydown', onKeyDown)
+					window.removeEventListener('resize', onScroll)
+					window.removeEventListener('scroll', onScroll, true)
+					if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(frame)
+					else window.clearTimeout(frame)
+				}
+			}, [open, close])
+
+			const choose = (option) => {
+				props.onPick(option.kind === 'global' ? '' : JSON.stringify([option.provider, option.model]))
+				close()
+			}
+
+			const onKeyDown = (event) => {
+				if (event.key === 'ArrowDown') {
+					event.preventDefault()
+					setActive((index) => Math.min(flat.length - 1, index + 1))
+				} else if (event.key === 'ArrowUp') {
+					event.preventDefault()
+					setActive((index) => Math.max(0, index - 1))
+				} else if (event.key === 'Enter') {
+					event.preventDefault()
+					const option = flat[active]
+					if (option !== undefined) choose(option)
+				}
+			}
+
+			/** Render rows, inserting a provider heading when the group changes. */
+			const listItems = []
+			let lastProvider = null
+			flat.forEach((option, index) => {
+				if (option.kind === 'model' && option.provider !== lastProvider) {
+					lastProvider = option.provider
+					listItems.push(
+						h('div', { key: `group-${option.provider}`, className: 'wdm-pop-group' }, option.providerName ?? option.provider),
+					)
+				}
+				listItems.push(
+					h(
+						'button',
+						{
+							key: option.kind === 'global' ? 'global' : `${option.provider}/${option.model}`,
+							type: 'button',
+							role: 'option',
+							className: `wdm-opt${index === active ? ' wdm-opt-active' : ''}`,
+							'aria-selected': index === 0 && option.kind === 'global' && props.value === '' ? 'true' : undefined,
+							onClick: () => choose(option),
+							onMouseEnter: () => setActive(index),
+						},
+						option.label,
+					),
+				)
+			})
+
+			return h(
+				'span',
+				{ className: 'wdm-picker' },
+				h(
+					'button',
+					{
+						ref: triggerRef,
+						type: 'button',
+						className: 'wdm-select wdm-trigger',
+						'data-set': props.value === '' ? 'false' : 'true',
+						'aria-label': props.ariaLabel,
+						'aria-haspopup': 'listbox',
+						'aria-expanded': open ? 'true' : 'false',
+						title: props.label,
+						onClick: openPanel,
+					},
+					h('span', { className: 'wdm-trigger-label' }, props.label),
+					h('span', { className: 'wdm-chevron', 'aria-hidden': 'true' }, '▾'),
+				),
+				open
+					? h(
+							'div',
+							{
+								className: 'wdm-pop',
+								style: position === null ? { left: 0, top: 0, width: 280 } : position,
+							},
+							h(
+								'div',
+								{ className: 'wdm-pop-search' },
+								h('input', {
+									ref: inputRef,
+									className: 'wdm-input',
+									type: 'search',
+									value: query,
+									placeholder: 'Search models…',
+									'aria-label': 'Search models',
+									onChange: (event) => {
+										setQuery(event.target.value)
+										setActive(0)
+									},
+									onKeyDown,
+								}),
+							),
+							h('div', { className: 'wdm-pop-list', role: 'listbox' }, listItems),
+						)
+					: null,
+			)
 		}
 
 		/**
@@ -275,27 +465,13 @@ window.__ModuleLoader__.load({
 					h(
 						'span',
 						{ className: 'wdm-picks' },
-						h(
-							'select',
-							{
-								className: 'wdm-select',
-								'data-set': entry === undefined ? 'false' : 'true',
-								value,
-								'aria-label': `Default model for ${title}`,
-								title: entry === undefined ? 'Follows the global default' : modelLabel(catalog, entry),
-								onChange: (event) => pickModel(workspace, event.target.value),
-							},
-							h('option', { value: '' }, 'Global default'),
-							groups.map((group) =>
-								h(
-									'optgroup',
-									{ key: group.id, label: group.name },
-									group.models.map((model) =>
-										h('option', { key: `${group.id}/${model.id}`, value: JSON.stringify([group.id, model.id]) }, model.name),
-									),
-								),
-							),
-						),
+						h(ModelPicker, {
+							groups,
+							value,
+							label: entry === undefined ? 'Global default' : modelLabel(catalog, entry),
+							ariaLabel: `Default model for ${title}`,
+							onPick: (rawValue) => pickModel(workspace, rawValue),
+						}),
 						h(
 							'select',
 							{

@@ -24,8 +24,10 @@ https://iamafshiin.github.io/dsh-workspace-default-model/index.json
 ## What it looks like
 
 - Left sidebar gets a row named **Workspace models**.
-- The page lists every Workspace with two pickers: the model (grouped by
-  provider) and its reasoning effort.
+- The page lists every Workspace with two pickers: the model and its reasoning
+  effort.
+- The model picker is searchable: type to filter by model name, id, or provider,
+  move with `↑`/`↓`, confirm with `Enter`, close with `Esc`.
 - `Global default` / `Model default` mean "do nothing special" — that Workspace
   keeps using the deployment default from `@deepseek-ai/dsh-agent-default-model`,
   or the model's own default effort.
@@ -88,9 +90,10 @@ A backup of the original profile manifest sits beside it as
 
 ## Changelog
 
-- **0.2.0** – reasoning effort per Workspace, next to the model. The catalog
-  route now reports each model's levels, saving validates them, and the Session
-  event carries `reasoningEffort`.
+- **0.2.0** – reasoning effort per Workspace next to the model, and a searchable
+  model picker (filter by name, id, or provider; keyboard navigation). The
+  catalog route now reports each model's levels, saving validates them, and the
+  Session event carries `reasoningEffort`.
 - **0.1.0** – first release: a default model per Workspace.
 
 ## Publish
