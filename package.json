@@ -1,7 +1,7 @@
 {
   "name": "dsh-workspace-default-model",
-  "version": "0.1.0",
-  "description": "Pick a default model for each Workspace in the DSH left sidebar; new Sessions in that Workspace start on it.",
+  "version": "0.2.0",
+  "description": "Pick a default model and reasoning effort for each Workspace in the DSH left sidebar; new Sessions in that Workspace start on them.",
   "type": "module",
   "main": "index.js",
   "exports": {

@@ -46,6 +46,9 @@ window.__ModuleLoader__.load({
 			'.wdm-select{flex:none;max-width:290px;min-width:180px;height:30px;border-radius:var(--dsw-radius-sm,8px);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;padding:0 8px;cursor:pointer}',
 			'.wdm-select:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}',
 			'.wdm-select[data-set="true"]{border-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 55%,var(--dsw-alias-border-l2))}',
+			'.wdm-select:disabled{opacity:.5;cursor:default;border-color:var(--dsw-alias-border-l2)}',
+			'.wdm-picks{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
+			'.wdm-effort{max-width:150px;min-width:112px}',
 			'.wdm-note{padding:12px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-lg,14px);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);font-size:12.5px}',
 			'.wdm-note b{display:block;margin-bottom:3px;color:var(--dsw-alias-label-primary);font-size:12.5px}',
 			'.wdm-status{font-size:12px;color:var(--dsw-alias-label-tertiary)}',
@@ -179,8 +182,8 @@ window.__ModuleLoader__.load({
 							return
 						}
 						setStateError(
-							result !== undefined && result !== null && result.error === 'model-unavailable'
-								? 'That model is not available any more; pick another one.'
+							result !== null && result !== undefined && result.error === 'selection-unavailable'
+								? 'That model or reasoning effort is not available any more; pick another one.'
 								: 'Saving failed; the previous choice is still in place.',
 						)
 						setStatus('')
@@ -191,33 +194,74 @@ window.__ModuleLoader__.load({
 					})
 			}
 
-			const pick = (workspace, rawValue) => {
+			const groups = catalog !== null && Array.isArray(catalog.groups) ? catalog.groups : []
+
+			/**
+			 * The reasoning efforts one model advertises, from the loaded catalog.
+			 * @param {string} provider
+			 * @param {string} model
+			 * @returns {Array<{ id: string, name: string, description?: string }>}
+			 */
+			const effortsFor = (provider, model) => {
+				const group = groups.find((item) => item.id === provider)
+				const entry = group === undefined ? undefined : group.models.find((item) => item.id === model)
+				const reasoning = entry === undefined ? undefined : entry.reasoning
+				return reasoning !== undefined && reasoning !== null && Array.isArray(reasoning.efforts) ? reasoning.efforts : []
+			}
+
+			const pickModel = (workspace, rawValue) => {
 				const nextEntries = { ...entries }
 				if (rawValue === '') {
 					delete nextEntries[workspace.workspaceId]
-				} else {
-					let pair
-					try {
-						pair = JSON.parse(rawValue)
-					} catch {
-						return
-					}
-					nextEntries[workspace.workspaceId] = {
-						path: workspace.path,
-						provider: String(pair[0]),
-						model: String(pair[1]),
-					}
+					save(nextEntries, 'Workspace follows the global default.')
+					return
 				}
-				const cleared = rawValue === ''
-				save(nextEntries, cleared ? 'Workspace follows the global default.' : 'Saved.')
+				let pair
+				try {
+					pair = JSON.parse(rawValue)
+				} catch {
+					return
+				}
+				const previous = entries[workspace.workspaceId]
+				const provider = String(pair[0])
+				const model = String(pair[1])
+				const keepEffort =
+					previous !== undefined &&
+					previous.reasoningEffort !== undefined &&
+					effortsFor(provider, model).some((effort) => effort.id === previous.reasoningEffort)
+				nextEntries[workspace.workspaceId] = {
+					path: workspace.path,
+					provider,
+					model,
+					...(keepEffort ? { reasoningEffort: previous.reasoningEffort } : {}),
+				}
+				save(nextEntries, keepEffort ? 'Model and effort saved.' : 'Model saved.')
 			}
 
-			const groups = catalog !== null && Array.isArray(catalog.groups) ? catalog.groups : []
+			const pickEffort = (workspace, rawValue) => {
+				const entry = entries[workspace.workspaceId]
+				if (entry === undefined) return
+				const nextEntries = { ...entries }
+				nextEntries[workspace.workspaceId] =
+					rawValue === ''
+						? { path: entry.path, provider: entry.provider, model: entry.model }
+						: {
+								path: entry.path,
+								provider: entry.provider,
+								model: entry.model,
+								reasoningEffort: rawValue,
+							}
+				save(nextEntries, rawValue === '' ? 'Effort follows the model default.' : 'Effort saved.')
+			}
+
 			const configured = Object.keys(entries).length
 			const rows = workspaces.map((workspace) => {
 				const entry = entries[workspace.workspaceId]
 				const value = entry === undefined ? '' : JSON.stringify([entry.provider, entry.model])
 				const title = typeof workspace.title === 'string' && workspace.title.trim() !== '' ? workspace.title : workspace.path
+				const efforts = entry === undefined ? [] : effortsFor(entry.provider, entry.model)
+				const effortValue = entry !== undefined && entry.reasoningEffort !== undefined ? entry.reasoningEffort : ''
+				const effortDisabled = entry === undefined || efforts.length === 0
 				return h(
 					'div',
 					{ key: workspace.workspaceId, className: 'wdm-row' },
@@ -229,23 +273,47 @@ window.__ModuleLoader__.load({
 						h('span', { className: 'wdm-sub' }, workspace.path),
 					),
 					h(
-						'select',
-						{
-							className: 'wdm-select',
-							'data-set': entry === undefined ? 'false' : 'true',
-							value,
-							'aria-label': `Default model for ${title}`,
-							title: entry === undefined ? 'Follows the global default' : modelLabel(catalog, entry),
-							onChange: (event) => pick(workspace, event.target.value),
-						},
-						h('option', { value: '' }, 'Global default'),
-						groups.map((group) =>
-							h(
-								'optgroup',
-								{ key: group.id, label: group.name },
-								group.models.map((model) =>
-									h('option', { key: `${group.id}/${model.id}`, value: JSON.stringify([group.id, model.id]) }, model.name),
+						'span',
+						{ className: 'wdm-picks' },
+						h(
+							'select',
+							{
+								className: 'wdm-select',
+								'data-set': entry === undefined ? 'false' : 'true',
+								value,
+								'aria-label': `Default model for ${title}`,
+								title: entry === undefined ? 'Follows the global default' : modelLabel(catalog, entry),
+								onChange: (event) => pickModel(workspace, event.target.value),
+							},
+							h('option', { value: '' }, 'Global default'),
+							groups.map((group) =>
+								h(
+									'optgroup',
+									{ key: group.id, label: group.name },
+									group.models.map((model) =>
+										h('option', { key: `${group.id}/${model.id}`, value: JSON.stringify([group.id, model.id]) }, model.name),
+									),
 								),
+							),
+						),
+						h(
+							'select',
+							{
+								className: 'wdm-select wdm-effort',
+								'data-set': effortValue === '' ? 'false' : 'true',
+								value: effortValue,
+								disabled: effortDisabled,
+								'aria-label': `Default reasoning effort for ${title}`,
+								title: effortDisabled
+									? entry === undefined
+										? 'Pick a model first'
+										: 'This model has no reasoning effort setting'
+									: 'Reasoning effort',
+								onChange: (event) => pickEffort(workspace, event.target.value),
+							},
+							h('option', { value: '' }, entry === undefined ? 'Effort' : 'Model default'),
+							efforts.map((effort) =>
+								h('option', { key: effort.id, value: effort.id, title: effort.description }, effort.name),
 							),
 						),
 					),
@@ -270,7 +338,7 @@ window.__ModuleLoader__.load({
 							h(
 								'p',
 								{ className: 'wdm-lede' },
-								'Give each Workspace its own default model. A new session started in that Workspace begins on it; changing it never touches a session that already exists.',
+								'Give each Workspace its own default model and reasoning effort. A new session started in that Workspace begins on them; changing them never touches a session that already exists.',
 							),
 						),
 						h('span', { className: 'wdm-badge' }, `${configured} of ${workspaces.length} set`),

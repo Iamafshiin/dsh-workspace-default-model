@@ -112,8 +112,15 @@ function applyWorkspaceDefault(ctx, store, payload) {
     if (hasModelSelection(session)) return
     const entry = store.lookup(header.cwd)
     if (entry === undefined) return
-    session.append('model/selection', { provider: entry.provider, model: entry.model })
-    info(ctx, `${entry.provider}/${entry.model} applied to session ${String(session.id)} in ${header.cwd}`)
+    session.append('model/selection', {
+      provider: entry.provider,
+      model: entry.model,
+      ...(entry.reasoningEffort === undefined ? {} : { reasoningEffort: entry.reasoningEffort }),
+    })
+    info(
+      ctx,
+      `${entry.provider}/${entry.model}${entry.reasoningEffort === undefined ? '' : ` (${entry.reasoningEffort})`} applied to session ${String(session.id)} in ${header.cwd}`,
+    )
   } catch (error) {
     warn(ctx, `could not apply a workspace default: ${messageOf(error)}`)
   }
@@ -155,9 +162,9 @@ async function handleState(request, store, ctx) {
       return jsonResponse({ ok: false, error: 'unreadable-body' }, 400)
     }
     const entries = normalizeEntries(payload?.entries)
-    const unknown = await unknownModels(ctx, entries)
-    if (unknown.length > 0) {
-      return jsonResponse({ ok: false, error: 'model-unavailable', unknown }, 200)
+    const invalid = await validateSelections(ctx, entries)
+    if (invalid.length > 0) {
+      return jsonResponse({ ok: false, error: 'selection-unavailable', invalid }, 200)
     }
     return jsonResponse({ ok: true, ...(await store.write(entries)) })
   } catch (error) {
@@ -184,14 +191,21 @@ async function handleCatalog(ctx, cache) {
     for (const provider of providers) {
       try {
         const models = await ctx.llm.listModels(provider.id)
-        groups.push({
-          id: provider.id,
-          name: provider.name ?? provider.id,
-          models: models.map((model) => ({
+        const entries = []
+        for (const model of models) {
+          const entry = {
             id: model.id,
             name: model.name ?? model.id,
             ...(model.description === undefined ? {} : { description: model.description }),
-          })),
+          }
+          const reasoning = await reasoningOf(ctx, provider.id, model.id)
+          if (reasoning !== undefined) entry.reasoning = reasoning
+          entries.push(entry)
+        }
+        groups.push({
+          id: provider.id,
+          name: provider.name ?? provider.id,
+          models: entries,
         })
       } catch (error) {
         failures.push({ id: provider.id, name: provider.name ?? provider.id, message: messageOf(error) })
@@ -213,33 +227,88 @@ async function handleCatalog(ctx, cache) {
 }
 
 /**
- * Report every stored selection whose model is not currently advertised.
+ * Read one model's advertised reasoning efforts.
  * @param {import('@deepseek-ai/cordis').Context} ctx
- * @param {Record<string, { provider: string, model: string }>} entries
- * @returns {Promise<Array<{ workspaceId: string, provider: string, model: string }>>}
+ * @param {string} provider
+ * @param {string} model
+ * @returns {Promise<{ efforts: Array<{ id: string, name: string, description?: string }>, defaultEffort?: string } | undefined>}
  */
-async function unknownModels(ctx, entries) {
+async function reasoningOf(ctx, provider, model) {
+  try {
+    if (typeof ctx.llm?.resolveModelInfo !== 'function') return undefined
+    const info = await ctx.llm.resolveModelInfo(provider, model)
+    const reasoning = info === null || info === undefined ? undefined : info.reasoning
+    if (reasoning === null || reasoning === undefined) return undefined
+    const efforts = []
+    for (const effort of Array.isArray(reasoning.efforts) ? reasoning.efforts : []) {
+      if (typeof effort?.id !== 'string' || effort.id === '') continue
+      efforts.push({
+        id: effort.id,
+        name: typeof effort.name === 'string' && effort.name !== '' ? effort.name : effort.id,
+        ...(typeof effort.description === 'string' ? { description: effort.description } : {}),
+      })
+    }
+    return {
+      efforts,
+      ...(typeof reasoning.defaultEffort === 'string' ? { defaultEffort: reasoning.defaultEffort } : {}),
+    }
+  } catch {
+    // A model without adapter metadata simply advertises no effort setting.
+    return undefined
+  }
+}
+
+/**
+ * Report every stored selection the live catalog no longer accepts: an unknown
+ * provider or model, or a reasoning effort that model does not advertise.
+ * @param {import('@deepseek-ai/cordis').Context} ctx
+ * @param {Record<string, { provider: string, model: string, reasoningEffort?: string }>} entries
+ * @returns {Promise<Array<{ workspaceId: string, reason: 'model' | 'effort', provider: string, model: string, reasoningEffort?: string }>>}
+ */
+async function validateSelections(ctx, entries) {
   const providers = typeof ctx.llm?.listProviders === 'function' ? ctx.llm.listProviders() : []
   const known = new Set(providers.map((provider) => provider.id))
-  const cache = new Map()
-  const unknown = []
+  const models = new Map()
+  const efforts = new Map()
+  const invalid = []
   for (const [workspaceId, entry] of Object.entries(entries)) {
     if (!known.has(entry.provider)) {
-      unknown.push({ workspaceId, provider: entry.provider, model: entry.model })
+      invalid.push({ workspaceId, reason: 'model', provider: entry.provider, model: entry.model })
       continue
     }
-    let models = cache.get(entry.provider)
-    if (models === undefined) {
+    let ids = models.get(entry.provider)
+    if (ids === undefined) {
       try {
-        models = (await ctx.llm.listModels(entry.provider)).map((model) => model.id)
+        ids = (await ctx.llm.listModels(entry.provider)).map((model) => model.id)
       } catch {
-        models = []
+        ids = []
       }
-      cache.set(entry.provider, models)
+      models.set(entry.provider, ids)
     }
-    if (!models.includes(entry.model)) unknown.push({ workspaceId, provider: entry.provider, model: entry.model })
+    if (!ids.includes(entry.model)) {
+      invalid.push({ workspaceId, reason: 'model', provider: entry.provider, model: entry.model })
+      continue
+    }
+    if (entry.reasoningEffort === undefined) continue
+    const key = `${entry.provider}\u0000${entry.model}`
+    let advertised = efforts.get(key)
+    if (advertised === undefined) {
+      advertised = new Set()
+      const reasoning = await reasoningOf(ctx, entry.provider, entry.model)
+      for (const effort of reasoning === undefined ? [] : reasoning.efforts) advertised.add(effort.id)
+      efforts.set(key, advertised)
+    }
+    if (!advertised.has(entry.reasoningEffort)) {
+      invalid.push({
+        workspaceId,
+        reason: 'effort',
+        provider: entry.provider,
+        model: entry.model,
+        reasoningEffort: entry.reasoningEffort,
+      })
+    }
   }
-  return unknown
+  return invalid
 }
 
 /**
@@ -254,14 +323,19 @@ export function createStore(ctx) {
   let cache
   let ready = false
   let chain = Promise.resolve()
-  /** @type {Map<string, { provider: string, model: string }>} */
+  /** @type {Map<string, { provider: string, model: string, reasoningEffort?: string }>} */
   let byPath = new Map()
 
   const index = () => {
     byPath = new Map()
     for (const entry of Object.values(cache?.entries ?? {})) {
       const key = pathKey(entry.path)
-      if (key !== '') byPath.set(key, { provider: entry.provider, model: entry.model })
+      if (key === '') continue
+      byPath.set(key, {
+        provider: entry.provider,
+        model: entry.model,
+        ...(entry.reasoningEffort === undefined ? {} : { reasoningEffort: entry.reasoningEffort }),
+      })
     }
   }
 
@@ -293,7 +367,7 @@ export function createStore(ctx) {
     /**
      * Resolve a Session's working directory to its Workspace default.
      * @param {string} cwd
-     * @returns {{ provider: string, model: string } | undefined}
+     * @returns {{ provider: string, model: string, reasoningEffort?: string } | undefined}
      */
     lookup(cwd) {
       if (!ready) return undefined
@@ -326,13 +400,14 @@ export function createStore(ctx) {
 
 /**
  * Coerce anything into the entry map this plugin stores: workspace id as key,
- * absolute path, and a provider/model pair. Anything else is dropped rather
- * than rejected, so a hand-edited file cannot wedge the page.
+ * absolute path, a provider/model pair, and an optional reasoning effort.
+ * Anything else is dropped rather than rejected, so a hand-edited file cannot
+ * wedge the page.
  * @param {unknown} value
- * @returns {Record<string, { path: string, provider: string, model: string }>}
+ * @returns {Record<string, { path: string, provider: string, model: string, reasoningEffort?: string }>}
  */
 export function normalizeEntries(value) {
-  /** @type {Record<string, { path: string, provider: string, model: string }>} */
+  /** @type {Record<string, { path: string, provider: string, model: string, reasoningEffort?: string }>} */
   const entries = {}
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return entries
   for (const [rawKey, rawEntry] of Object.entries(value)) {
@@ -342,8 +417,14 @@ export function normalizeEntries(value) {
     const path = typeof rawEntry.path === 'string' ? rawEntry.path.trim() : ''
     const provider = typeof rawEntry.provider === 'string' ? rawEntry.provider.trim() : ''
     const model = typeof rawEntry.model === 'string' ? rawEntry.model.trim() : ''
+    const effort = typeof rawEntry.reasoningEffort === 'string' ? rawEntry.reasoningEffort.trim() : ''
     if (path === '' || provider === '' || model === '') continue
-    entries[workspaceId] = { path, provider, model }
+    entries[workspaceId] = {
+      path,
+      provider,
+      model,
+      ...(effort === '' || effort.length > 64 ? {} : { reasoningEffort: effort }),
+    }
   }
   return entries
 }

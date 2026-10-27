@@ -1,9 +1,10 @@
 # dsh-workspace-default-model
 
-Pick a **default model for each Workspace** in DeepSeek Harness. The choice
-lives in a new **Workspace models** page in the left sidebar, and it applies to
-every *new* Session started in that Workspace. Sessions that already exist are
-never changed, and the process-wide default model is never overwritten.
+Pick a **default model and reasoning effort for each Workspace** in DeepSeek
+Harness. The choice lives in a new **Workspace models** page in the left
+sidebar, and it applies to every *new* Session started in that Workspace.
+Sessions that already exist are never changed, and the process-wide default
+model is never overwritten.
 
 ## Install
 
@@ -23,9 +24,12 @@ https://iamafshiin.github.io/dsh-workspace-default-model/index.json
 ## What it looks like
 
 - Left sidebar gets a row named **Workspace models**.
-- The page lists every Workspace with a model picker (grouped by provider).
-- `Global default` means "do nothing special" — that Workspace keeps using the
-  deployment default from `@deepseek-ai/dsh-agent-default-model`.
+- The page lists every Workspace with two pickers: the model (grouped by
+  provider) and its reasoning effort.
+- `Global default` / `Model default` mean "do nothing special" — that Workspace
+  keeps using the deployment default from `@deepseek-ai/dsh-agent-default-model`,
+  or the model's own default effort.
+- A model that advertises no reasoning levels keeps the effort picker disabled.
 
 ## How it works
 
@@ -78,8 +82,16 @@ A backup of the original profile manifest sits beside it as
 - The map is keyed by Workspace id for the UI and matched by Workspace **path**
   when a Session starts, so re-adding a Workspace at the same path keeps the
   choice.
-- Saving validates each provider/model against the live catalog; a model that
-  is no longer advertised is rejected instead of being stored.
+- Saving validates each provider/model against the live catalog, and each
+  reasoning effort against what that model advertises; an unavailable choice is
+  rejected instead of being stored.
+
+## Changelog
+
+- **0.2.0** – reasoning effort per Workspace, next to the model. The catalog
+  route now reports each model's levels, saving validates them, and the Session
+  event carries `reasoningEffort`.
+- **0.1.0** – first release: a default model per Workspace.
 
 ## Publish
 
@@ -87,14 +99,13 @@ DSH has no single built-in store. A "market" is one JSON index file that users
 add to the **Discover** tab, so publishing means: ship the npm package, host an
 index that lists it, and (optionally) list the repo in community catalogs.
 
-1. **npm** – the name `dsh-workspace-default-model` is free. `package.json` is
-   already publish-ready (`private` removed, `engines.dsh`, `files`, `license`).
+1. **npm** – published as `dsh-workspace-default-model`. `package.json` is
+   publish-ready (`private` removed, `engines.dsh`, `files`, `license`).
 
    ```powershell
    cd C:\Users\Afshin\.dsh\plugins\dsh-workspace-default-model
    npm run check
-   npm pack --dry-run      # 6 files, ~11 kB
-   npm login
+   npm pack --dry-run      # 6 files, ~12 kB
    npm publish
    ```
 
