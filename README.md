@@ -1,10 +1,11 @@
 # dsh-workspace-default-model
 
-Pick a **default model and reasoning effort for each Workspace** in DeepSeek
-Harness. The choice lives in a new **Workspace models** page in the left
-sidebar, and it applies to every *new* Session started in that Workspace.
-Sessions that already exist are never changed, and the process-wide default
-model is never overwritten.
+Give each **Workspace** in DeepSeek Harness its own **colour**, **default model**
+and **reasoning effort**. The choices live in a new **Workspace models** page in
+the left sidebar: the colour marks the Workspace in the sidebar itself, and the
+model applies to every *new* Session started in that Workspace. Sessions that
+already exist are never changed, and the process-wide default model is never
+overwritten.
 
 ## Install
 
@@ -24,14 +25,19 @@ https://iamafshiin.github.io/dsh-workspace-default-model/index.json
 ## What it looks like
 
 - Left sidebar gets a row named **Workspace models**.
-- The page lists every Workspace with two pickers: the model and its reasoning
-  effort.
+- The page lists every Workspace with a colour chip, a model picker, and a
+  reasoning-effort picker.
+- The colour chip opens preset swatches, an OS colour well, and a hex field, so
+  any colour can be picked. A saved colour paints a bar on the Workspace's row
+  in the left sidebar and tints that row here.
 - The model picker is searchable: type to filter by model name, id, or provider,
   move with `↑`/`↓`, confirm with `Enter`, close with `Esc`.
 - `Global default` / `Model default` mean "do nothing special" — that Workspace
   keeps using the deployment default from `@deepseek-ai/dsh-agent-default-model`,
   or the model's own default effort.
 - A model that advertises no reasoning levels keeps the effort picker disabled.
+- Colour and model are independent: a Workspace can carry a colour with no model
+  override, and clearing the model keeps the colour.
 
 ## How it works
 
@@ -84,12 +90,19 @@ A backup of the original profile manifest sits beside it as
 - The map is keyed by Workspace id for the UI and matched by Workspace **path**
   when a Session starts, so re-adding a Workspace at the same path keeps the
   choice.
-- Saving validates each provider/model against the live catalog, and each
-  reasoning effort against what that model advertises; an unavailable choice is
-  rejected instead of being stored.
+- Saving validates each provider/model against the live catalog, each reasoning
+  effort against what that model advertises, and each colour as a hex value; an
+  unavailable choice is rejected instead of being stored.
+- The sidebar bar is the only DOM the plugin touches: it sets one attribute and
+  one CSS variable on the row that already carries
+  `data-row-key="workspace:<id>"`, and a stylesheet draws the bar. React keeps
+  ownership of the row.
 
 ## Changelog
 
+- **0.3.0** – per-Workspace colour: preset swatches, colour well and hex field in
+  the panel, a colour bar on the sidebar row, and colours that live independently
+  of the model. Storage moved to document version 2 (version 1 files still load).
 - **0.2.0** – reasoning effort per Workspace next to the model, and a searchable
   model picker (filter by name, id, or provider; keyboard navigation). The
   catalog route now reports each model's levels, saving validates them, and the

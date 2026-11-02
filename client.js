@@ -49,6 +49,25 @@ window.__ModuleLoader__.load({
 			'.wdm-select:disabled{opacity:.5;cursor:default;border-color:var(--dsw-alias-border-l2)}',
 			'.wdm-picks{flex:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
 			'.wdm-effort{max-width:150px;min-width:112px}',
+			'.wdm-row[data-color="true"]{box-shadow:inset 3px 0 0 var(--wdm-row-color)}',
+			'.wdm-row[data-color="true"] .wdm-glyph{color:var(--wdm-row-color);background:color-mix(in srgb,var(--wdm-row-color) 18%,transparent)}',
+			'.wdm-color{flex:none;width:22px;height:22px;box-sizing:border-box;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--wdm-color);cursor:pointer;padding:0}',
+			'.wdm-color[data-empty="true"]{background:transparent;border-style:dashed}',
+			'.wdm-color:hover{border-color:var(--dsw-alias-label-tertiary)}',
+			'.wdm-color:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}',
+			'.wdm-color-pop{max-height:none;padding:10px 0 0}',
+			'.wdm-swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:0 10px 10px}',
+			'.wdm-swatch{width:22px;height:22px;box-sizing:border-box;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);cursor:pointer;padding:0}',
+			'.wdm-swatch[data-selected="true"]{outline:2px solid var(--dsw-alias-label-primary);outline-offset:1px}',
+			'.wdm-color-row{display:flex;align-items:center;gap:8px;padding:0 10px 10px}',
+			'.wdm-color-input{flex:none;width:30px;height:26px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:transparent;cursor:pointer}',
+			'.wdm-hex{flex:1;min-width:0;height:26px;box-sizing:border-box;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;padding:0 7px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}',
+			'.wdm-hex:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}',
+			'.wdm-clear{flex:1;height:26px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}',
+			'.wdm-clear:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-tertiary)}',
+			'.wdm-clear:disabled{opacity:.45;cursor:default}',
+			'div[role="treeitem"][data-row-key^="workspace:"][data-wdm-ws-color]{position:relative}',
+			'div[role="treeitem"][data-row-key^="workspace:"][data-wdm-ws-color]::before{content:"";position:absolute;inset-inline-start:1px;top:50%;transform:translateY(-50%);width:4px;height:16px;border-radius:2px;background:var(--wdm-ws-color);pointer-events:none}',
 			'.wdm-picker{position:relative;display:inline-flex;flex:none}',
 			'.wdm-trigger{display:inline-flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;overflow:hidden}',
 			'.wdm-trigger-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -304,6 +323,166 @@ window.__ModuleLoader__.load({
 			)
 		}
 
+		/** Preset colours offered by the picker; the hex field accepts anything else. */
+		const COLOR_PRESETS = [
+			'#e5484d',
+			'#e57e48',
+			'#e5b93c',
+			'#a7d14a',
+			'#4cc38a',
+			'#3fb8af',
+			'#4a9de5',
+			'#6f6fe0',
+			'#a86fe0',
+			'#e06fb5',
+			'#8d8d8d',
+			'#c0a37c',
+		]
+
+		/**
+		 * Colour picker for one Workspace: preset swatches, a native colour well,
+		 * and a hex field, so any colour can be chosen.
+		 * @param {any} props - value, label, ariaLabel, onPick.
+		 */
+		function ColorPicker(props) {
+			const [open, setOpen] = React.useState(false)
+			const [position, setPosition] = React.useState(null)
+			const [draft, setDraft] = React.useState(typeof props.value === 'string' && props.value !== '' ? props.value : '#4a9de5')
+			const triggerRef = React.useRef(null)
+
+			const close = React.useCallback(() => setOpen(false), [])
+
+			const openPanel = () => {
+				const rect = triggerRef.current === null ? null : triggerRef.current.getBoundingClientRect()
+				if (rect !== null) {
+					const width = 214
+					const left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 12))
+					const below = rect.bottom + 6
+					const flip = below + 250 > window.innerHeight && rect.top > 280
+					setPosition({ left, top: flip ? Math.max(8, rect.top - 6 - 250) : below, width })
+				}
+				setDraft(typeof props.value === 'string' && props.value !== '' ? props.value : '#4a9de5')
+				setOpen((wasOpen) => !wasOpen)
+			}
+
+			React.useEffect(() => {
+				if (!open) return undefined
+				const onPointerDown = (event) => {
+					const node = event.target
+					if (triggerRef.current !== null && triggerRef.current.contains(node)) return
+					if (node instanceof Element && node.closest('.wdm-pop') !== null) return
+					close()
+				}
+				const onKeyDown = (event) => {
+					if (event.key === 'Escape') close()
+				}
+				const onScroll = () => close()
+				document.addEventListener('mousedown', onPointerDown)
+				document.addEventListener('keydown', onKeyDown)
+				window.addEventListener('resize', onScroll)
+				window.addEventListener('scroll', onScroll, true)
+				return () => {
+					document.removeEventListener('mousedown', onPointerDown)
+					document.removeEventListener('keydown', onKeyDown)
+					window.removeEventListener('resize', onScroll)
+					window.removeEventListener('scroll', onScroll, true)
+				}
+			}, [open, close])
+
+			const choose = (color) => {
+				props.onPick(color)
+				close()
+			}
+
+			const commitHex = (text) => {
+				const cleaned = String(text).trim().replace(/^#/, '').toLowerCase()
+				if (/^[0-9a-f]{6}$/.test(cleaned)) choose(`#${cleaned}`)
+				else if (/^[0-9a-f]{3}$/.test(cleaned)) choose(`#${cleaned[0]}${cleaned[0]}${cleaned[1]}${cleaned[1]}${cleaned[2]}${cleaned[2]}`)
+			}
+
+			const value = typeof props.value === 'string' ? props.value : ''
+
+			return h(
+				'span',
+				{ className: 'wdm-picker' },
+				h('button', {
+					ref: triggerRef,
+					type: 'button',
+					className: 'wdm-color',
+					'data-empty': value === '' ? 'true' : 'false',
+					'aria-label': props.ariaLabel,
+					'aria-haspopup': 'dialog',
+					'aria-expanded': open ? 'true' : 'false',
+					title: value === '' ? 'No colour' : value,
+					style: { '--wdm-color': value === '' ? 'transparent' : value },
+					onClick: openPanel,
+				}),
+				open
+					? h(
+							'div',
+							{ className: 'wdm-pop wdm-color-pop', style: position === null ? { left: 0, top: 0, width: 214 } : position },
+							h(
+								'div',
+								{ className: 'wdm-swatches' },
+								COLOR_PRESETS.map((color) =>
+									h('button', {
+										key: color,
+										type: 'button',
+										className: 'wdm-swatch',
+										'data-selected': value.toLowerCase() === color ? 'true' : 'false',
+										title: color,
+										style: { background: color },
+										onClick: () => choose(color),
+									}),
+								),
+							),
+							h(
+								'div',
+								{ className: 'wdm-color-row' },
+								h('input', {
+									className: 'wdm-color-input',
+									type: 'color',
+									value: /^#[0-9a-f]{6}$/i.test(draft) ? draft : '#4a9de5',
+									'aria-label': 'Pick any colour',
+									onChange: (event) => {
+										setDraft(event.target.value)
+										choose(event.target.value)
+									},
+								}),
+								h('input', {
+									className: 'wdm-hex',
+									type: 'text',
+									value: draft,
+									placeholder: '#4a9de5',
+									'aria-label': 'Colour hex value',
+									onChange: (event) => setDraft(event.target.value),
+									onKeyDown: (event) => {
+										if (event.key === 'Enter') {
+											event.preventDefault()
+											commitHex(draft)
+										}
+									},
+								}),
+							),
+							h(
+								'div',
+								{ className: 'wdm-color-row' },
+								h(
+									'button',
+									{
+										type: 'button',
+										className: 'wdm-clear',
+										onClick: () => choose(''),
+										disabled: value === '',
+									},
+									'No colour',
+								),
+							),
+						)
+					: null,
+			)
+		}
+
 		/**
 		 * The main panel: one row per Workspace, one model picker per row.
 		 * @param {any} props - standard slot props plus this plugin's inject face.
@@ -355,6 +534,12 @@ window.__ModuleLoader__.load({
 				}
 			}, [])
 
+			// Feed the sidebar painter so workspace rows carry their colour even
+			// while this page is closed.
+			React.useEffect(() => {
+				if (props && typeof props.publishColors === 'function') props.publishColors(entries)
+			}, [entries])
+
 			const save = (nextEntries, message) => {
 				const saveState = props && typeof props.saveState === 'function' ? props.saveState : null
 				if (saveState === null) {
@@ -372,9 +557,11 @@ window.__ModuleLoader__.load({
 							return
 						}
 						setStateError(
-							result !== null && result !== undefined && result.error === 'selection-unavailable'
-								? 'That model or reasoning effort is not available any more; pick another one.'
-								: 'Saving failed; the previous choice is still in place.',
+							result !== null && result !== undefined && result.error === 'colour-invalid'
+								? 'That colour value is not a hex colour; try again.'
+								: result !== null && result !== undefined && result.error === 'selection-unavailable'
+									? 'That model or reasoning effort is not available any more; pick another one.'
+									: 'Saving failed; the previous choice is still in place.',
 						)
 						setStatus('')
 					})
@@ -401,8 +588,11 @@ window.__ModuleLoader__.load({
 
 			const pickModel = (workspace, rawValue) => {
 				const nextEntries = { ...entries }
+				const previous = entries[workspace.workspaceId]
+				const keptColor = previous !== undefined && previous.color !== undefined ? { color: previous.color } : {}
 				if (rawValue === '') {
-					delete nextEntries[workspace.workspaceId]
+					if (previous === undefined || previous.color === undefined) delete nextEntries[workspace.workspaceId]
+					else nextEntries[workspace.workspaceId] = { path: workspace.path, ...keptColor }
 					save(nextEntries, 'Workspace follows the global default.')
 					return
 				}
@@ -412,7 +602,6 @@ window.__ModuleLoader__.load({
 				} catch {
 					return
 				}
-				const previous = entries[workspace.workspaceId]
 				const provider = String(pair[0])
 				const model = String(pair[1])
 				const keepEffort =
@@ -421,6 +610,7 @@ window.__ModuleLoader__.load({
 					effortsFor(provider, model).some((effort) => effort.id === previous.reasoningEffort)
 				nextEntries[workspace.workspaceId] = {
 					path: workspace.path,
+					...keptColor,
 					provider,
 					model,
 					...(keepEffort ? { reasoningEffort: previous.reasoningEffort } : {}),
@@ -430,31 +620,66 @@ window.__ModuleLoader__.load({
 
 			const pickEffort = (workspace, rawValue) => {
 				const entry = entries[workspace.workspaceId]
-				if (entry === undefined) return
+				if (entry === undefined || entry.provider === undefined || entry.model === undefined) return
 				const nextEntries = { ...entries }
-				nextEntries[workspace.workspaceId] =
-					rawValue === ''
-						? { path: entry.path, provider: entry.provider, model: entry.model }
+				nextEntries[workspace.workspaceId] = {
+					path: entry.path,
+					...(entry.color === undefined ? {} : { color: entry.color }),
+					provider: entry.provider,
+					model: entry.model,
+					...(rawValue === '' ? {} : { reasoningEffort: rawValue }),
+				}
+				save(nextEntries, rawValue === '' ? 'Effort follows the model default.' : 'Effort saved.')
+			}
+
+			const pickColor = (workspace, color) => {
+				const entry = entries[workspace.workspaceId]
+				const nextEntries = { ...entries }
+				if (color === '') {
+					if (entry === undefined) return
+					if (entry.provider === undefined || entry.model === undefined) delete nextEntries[workspace.workspaceId]
+					else {
+						nextEntries[workspace.workspaceId] = {
+							path: entry.path,
+							provider: entry.provider,
+							model: entry.model,
+							...(entry.reasoningEffort === undefined ? {} : { reasoningEffort: entry.reasoningEffort }),
+						}
+					}
+					save(nextEntries, 'Colour cleared.')
+					return
+				}
+				nextEntries[workspace.workspaceId] = {
+					path: workspace.path,
+					color,
+					...(entry === undefined || entry.provider === undefined || entry.model === undefined
+						? {}
 						: {
-								path: entry.path,
 								provider: entry.provider,
 								model: entry.model,
-								reasoningEffort: rawValue,
-							}
-				save(nextEntries, rawValue === '' ? 'Effort follows the model default.' : 'Effort saved.')
+								...(entry.reasoningEffort === undefined ? {} : { reasoningEffort: entry.reasoningEffort }),
+							}),
+				}
+				save(nextEntries, 'Colour saved.')
 			}
 
 			const configured = Object.keys(entries).length
 			const rows = workspaces.map((workspace) => {
 				const entry = entries[workspace.workspaceId]
-				const value = entry === undefined ? '' : JSON.stringify([entry.provider, entry.model])
+				const hasModel = entry !== undefined && entry.provider !== undefined && entry.model !== undefined
+				const value = hasModel ? JSON.stringify([entry.provider, entry.model]) : ''
 				const title = typeof workspace.title === 'string' && workspace.title.trim() !== '' ? workspace.title : workspace.path
-				const efforts = entry === undefined ? [] : effortsFor(entry.provider, entry.model)
-				const effortValue = entry !== undefined && entry.reasoningEffort !== undefined ? entry.reasoningEffort : ''
-				const effortDisabled = entry === undefined || efforts.length === 0
+				const efforts = hasModel ? effortsFor(entry.provider, entry.model) : []
+				const effortValue = hasModel && entry.reasoningEffort !== undefined ? entry.reasoningEffort : ''
+				const effortDisabled = !hasModel || efforts.length === 0
 				return h(
 					'div',
-					{ key: workspace.workspaceId, className: 'wdm-row' },
+					{
+						key: workspace.workspaceId,
+						className: 'wdm-row',
+						'data-color': entry !== undefined && entry.color !== undefined ? 'true' : 'false',
+						style: entry !== undefined && entry.color !== undefined ? { '--wdm-row-color': entry.color } : undefined,
+					},
 					h('span', { className: 'wdm-glyph', 'aria-hidden': 'true' }, h(FolderIcon)),
 					h(
 						'span',
@@ -465,10 +690,15 @@ window.__ModuleLoader__.load({
 					h(
 						'span',
 						{ className: 'wdm-picks' },
+						h(ColorPicker, {
+							value: entry !== undefined && entry.color !== undefined ? entry.color : '',
+							ariaLabel: `Workspace colour for ${title}`,
+							onPick: (color) => pickColor(workspace, color),
+						}),
 						h(ModelPicker, {
 							groups,
 							value,
-							label: entry === undefined ? 'Global default' : modelLabel(catalog, entry),
+							label: hasModel ? modelLabel(catalog, entry) : 'Global default',
 							ariaLabel: `Default model for ${title}`,
 							onPick: (rawValue) => pickModel(workspace, rawValue),
 						}),
@@ -514,7 +744,7 @@ window.__ModuleLoader__.load({
 							h(
 								'p',
 								{ className: 'wdm-lede' },
-								'Give each Workspace its own default model and reasoning effort. A new session started in that Workspace begins on them; changing them never touches a session that already exists.',
+								'Give each Workspace its own colour, default model and reasoning effort. The colour marks the Workspace in the sidebar; the model applies to a new session started there. Nothing here changes a session that already exists.',
 							),
 						),
 						h('span', { className: 'wdm-badge' }, `${configured} of ${workspaces.length} set`),
@@ -590,11 +820,80 @@ window.__ModuleLoader__.load({
 					return await response.json()
 				}
 
+				/** Latest known colour map, mirrored onto the left sidebar's rows. */
+				let colorMap = {}
+
+				/**
+				 * Mark each workspace row in the sidebar with its colour. The rows are
+				 * rendered by ui-workspace and expose `data-row-key="workspace:<id>"`,
+				 * so this only adds an attribute and a CSS variable; the visible bar is
+				 * a pseudo-element from our stylesheet. React keeps ownership of the row.
+				 */
+				const paintSidebarColors = () => {
+					if (typeof document === 'undefined') return
+					const wanted = new Map()
+					for (const [workspaceId, entry] of Object.entries(colorMap)) {
+						if (entry !== null && typeof entry === 'object' && typeof entry.color === 'string' && entry.color !== '') {
+							wanted.set(workspaceId, entry.color)
+						}
+					}
+					for (const node of document.querySelectorAll('[data-wdm-ws-color]')) {
+						const key = node.getAttribute('data-row-key') || ''
+						const workspaceId = key.startsWith('workspace:') ? key.slice('workspace:'.length) : ''
+						if (!wanted.has(workspaceId)) {
+							node.removeAttribute('data-wdm-ws-color')
+							node.style.removeProperty('--wdm-ws-color')
+						}
+					}
+					for (const [workspaceId, color] of wanted) {
+						const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(workspaceId) : workspaceId
+						const node = document.querySelector(`[role="treeitem"][data-row-key="workspace:${escaped}"]`)
+						if (node === null) continue
+						node.setAttribute('data-wdm-ws-color', '')
+						node.style.setProperty('--wdm-ws-color', color)
+					}
+				}
+
 				const face = {
 					loadState: () => getJson(STATE_PATH),
 					saveState: (entries) => postEntries(entries),
 					loadCatalog: () => getJson(CATALOG_PATH),
+					publishColors: (entries) => {
+						colorMap = entries !== null && typeof entries === 'object' ? entries : {}
+						paintSidebarColors()
+					},
 				}
+
+				// Keep the sidebar in step with re-renders, theme switches and reloads.
+				ctx.effect(() => {
+					if (typeof document === 'undefined') return () => {}
+					let frame = null
+					const run = () => {
+						frame = null
+						paintSidebarColors()
+					}
+					const schedule = () => {
+						if (frame !== null) return
+						frame =
+							typeof window.requestAnimationFrame === 'function' ? window.requestAnimationFrame(run) : window.setTimeout(run, 32)
+					}
+					const observer = new MutationObserver(schedule)
+					observer.observe(document.body, { childList: true, subtree: true })
+					getJson(STATE_PATH)
+						.then((result) => {
+							if (result === null || result === undefined || result.ok !== true) return
+							colorMap = result.entries ?? {}
+							schedule()
+						})
+						.catch(() => {})
+					return () => {
+						observer.disconnect()
+						if (frame !== null) {
+							if (typeof window.cancelAnimationFrame === 'function') window.cancelAnimationFrame(frame)
+							else window.clearTimeout(frame)
+						}
+					}
+				}, 'workspace-default-model: sidebar colours')
 
 				// The main panel is keyed by the same id the sidebar row uses; the
 				// layout selects it when the row is clicked.

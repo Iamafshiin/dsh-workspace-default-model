@@ -37,7 +37,7 @@ export const STATE_PATH = '/api/workspace-default-model/state'
 export const CATALOG_PATH = '/api/workspace-default-model/catalog'
 
 /** Shape version of the persisted document. */
-const FILE_VERSION = 1
+const FILE_VERSION = 2
 
 /** How long one catalog read is reused, in milliseconds. */
 const CATALOG_TTL_MS = 30_000
@@ -161,7 +161,12 @@ async function handleState(request, store, ctx) {
     } catch {
       return jsonResponse({ ok: false, error: 'unreadable-body' }, 400)
     }
-    const entries = normalizeEntries(payload?.entries)
+    const raw = payload?.entries
+    const badColors = invalidColors(raw)
+    if (badColors.length > 0) {
+      return jsonResponse({ ok: false, error: 'colour-invalid', invalid: badColors }, 200)
+    }
+    const entries = normalizeEntries(raw)
     const invalid = await validateSelections(ctx, entries)
     if (invalid.length > 0) {
       return jsonResponse({ ok: false, error: 'selection-unavailable', invalid }, 200)
@@ -171,6 +176,26 @@ async function handleState(request, store, ctx) {
     warn(ctx, `state request failed: ${messageOf(error)}`)
     return jsonResponse({ ok: false, error: 'state-failed', entries: {} })
   }
+}
+
+/**
+ * Report entries whose colour was supplied but is not a hex value, so a typo is
+ * rejected instead of silently clearing the workspace.
+ * @param {unknown} value
+ * @returns {Array<{ workspaceId: string, reason: 'colour', color: string }>}
+ */
+function invalidColors(value) {
+  /** @type {Array<{ workspaceId: string, reason: 'colour', color: string }>} */
+  const invalid = []
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return invalid
+  for (const [workspaceId, entry] of Object.entries(value)) {
+    if (entry === null || typeof entry !== 'object') continue
+    if (entry.color === undefined || entry.color === null || entry.color === '') continue
+    if (normalizeColor(entry.color) === undefined) {
+      invalid.push({ workspaceId: String(workspaceId), reason: 'colour', color: String(entry.color) })
+    }
+  }
+  return invalid
 }
 
 /**
@@ -272,6 +297,8 @@ async function validateSelections(ctx, entries) {
   const efforts = new Map()
   const invalid = []
   for (const [workspaceId, entry] of Object.entries(entries)) {
+    // A color-only entry carries no model selection to validate.
+    if (entry.provider === undefined || entry.model === undefined) continue
     if (!known.has(entry.provider)) {
       invalid.push({ workspaceId, reason: 'model', provider: entry.provider, model: entry.model })
       continue
@@ -330,7 +357,7 @@ export function createStore(ctx) {
     byPath = new Map()
     for (const entry of Object.values(cache?.entries ?? {})) {
       const key = pathKey(entry.path)
-      if (key === '') continue
+      if (key === '' || entry.provider === undefined || entry.model === undefined) continue
       byPath.set(key, {
         provider: entry.provider,
         model: entry.model,
@@ -400,14 +427,15 @@ export function createStore(ctx) {
 
 /**
  * Coerce anything into the entry map this plugin stores: workspace id as key,
- * absolute path, a provider/model pair, and an optional reasoning effort.
- * Anything else is dropped rather than rejected, so a hand-edited file cannot
- * wedge the page.
+ * absolute path, an optional colour, and an optional provider/model pair with
+ * its reasoning effort. An entry needs the path plus at least one of colour or
+ * model. Anything else is dropped rather than rejected, so a hand-edited file
+ * cannot wedge the page.
  * @param {unknown} value
- * @returns {Record<string, { path: string, provider: string, model: string, reasoningEffort?: string }>}
+ * @returns {Record<string, { path: string, color?: string, provider?: string, model?: string, reasoningEffort?: string }>}
  */
 export function normalizeEntries(value) {
-  /** @type {Record<string, { path: string, provider: string, model: string, reasoningEffort?: string }>} */
+  /** @type {Record<string, { path: string, color?: string, provider?: string, model?: string, reasoningEffort?: string }>} */
   const entries = {}
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return entries
   for (const [rawKey, rawEntry] of Object.entries(value)) {
@@ -415,18 +443,34 @@ export function normalizeEntries(value) {
     if (workspaceId === '' || workspaceId.length > 200) continue
     if (rawEntry === null || typeof rawEntry !== 'object') continue
     const path = typeof rawEntry.path === 'string' ? rawEntry.path.trim() : ''
+    if (path === '') continue
     const provider = typeof rawEntry.provider === 'string' ? rawEntry.provider.trim() : ''
     const model = typeof rawEntry.model === 'string' ? rawEntry.model.trim() : ''
     const effort = typeof rawEntry.reasoningEffort === 'string' ? rawEntry.reasoningEffort.trim() : ''
-    if (path === '' || provider === '' || model === '') continue
+    const color = normalizeColor(rawEntry.color)
+    const hasModel = provider !== '' && model !== ''
+    if (!hasModel && color === undefined) continue
     entries[workspaceId] = {
       path,
-      provider,
-      model,
-      ...(effort === '' || effort.length > 64 ? {} : { reasoningEffort: effort }),
+      ...(color === undefined ? {} : { color }),
+      ...(hasModel ? { provider, model } : {}),
+      ...(hasModel && effort !== '' && effort.length <= 64 ? { reasoningEffort: effort } : {}),
     }
   }
   return entries
+}
+
+/**
+ * Coerce a stored colour into `#rrggbb`, expanding the three-digit form.
+ * @param {unknown} value
+ * @returns {string | undefined}
+ */
+export function normalizeColor(value) {
+  if (typeof value !== 'string') return undefined
+  const text = value.trim().toLowerCase()
+  if (/^#[0-9a-f]{6}$/.test(text)) return text
+  if (/^#[0-9a-f]{3}$/.test(text)) return `#${text[1]}${text[1]}${text[2]}${text[2]}${text[3]}${text[3]}`
+  return undefined
 }
 
 /**
